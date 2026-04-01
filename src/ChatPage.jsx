@@ -2,27 +2,74 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 function ChatPage() {
+  const API_URL = import.meta.env.VITE_API_URL;
+  
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+
   const navigate = useNavigate();
 
-  function handleSend() {
+  async function handleSend() {
     const trimmedMessage = input.trim();
 
-    if (!trimmedMessage) return;
+    if (!trimmedMessage || loading) return;
 
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), sender: "user", text: trimmedMessage },
-      {
-        id: crypto.randomUUID(),
-        sender: "bot",
-        text: "Received!",
-        feedback: null,
-      },
-    ]);
+    const userMessage = {
+      id: crypto.randomUUID(),
+      sender: "user",
+      text: trimmedMessage,
+    };
 
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question: trimmedMessage }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Failed to get answer.");
+      }
+
+      const botMessage = {
+        id: data.interactionId || crypto.randomUUID(),
+        sender: "bot",
+        text: data.answer,
+        feedback: null,
+
+        // for feedback/evaluation
+        interactionId: data.interactionId,
+        documentId: data.documentId,
+        documentName: data.documentName,
+        question: data.question,
+        retrievedChunks: data.retrievedChunks || [],
+        llmCalled: data.llmCalled,
+        timestamp: data.timestamp,
+      };
+
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sender: "bot",
+          text: err.message || "Something went wrong.",
+          feedback: null,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleKeyDown(e) {
@@ -31,12 +78,43 @@ function ChatPage() {
     }
   }
 
-  function handleFeedback(messageId, value) {
+  async function handleFeedback(messageId, value) {
+    const target = messages.find((message) => message.id === messageId);
+    if (!target || target.sender !== "bot") return;
+
     setMessages((prev) =>
       prev.map((message) =>
         message.id === messageId ? { ...message, feedback: value } : message,
       ),
     );
+
+    try {
+      const response = await fetch(`${API_URL}/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          interactionId: target.interactionId,
+          documentId: target.documentId,
+          documentName: target.documentName,
+          question: target.question,
+          answer: target.text,
+          feedback: value,
+          retrievedChunks: target.retrievedChunks || [],
+          llmCalled: target.llmCalled,
+          timestamp: target.timestamp,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Failed to save feedback.");
+      }
+    } catch (err) {
+      console.error("Failed to save feedback:", err);
+    }
   }
 
   return (
@@ -127,7 +205,7 @@ function ChatPage() {
             disabled={!input.trim()}
             className="rounded-full bg-violet-500 px-4 py-2 text-sm text-white transition hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Send ➤
+            {loading ? "Sending..." : "Send ➤"}
           </button>
 
           <button
