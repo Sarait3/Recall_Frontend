@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { supabase } from "./lib/supabase";
+import logo from "./assets/logo.png";
 
 function SignupPage() {
   const navigate = useNavigate();
@@ -9,27 +10,31 @@ function SignupPage() {
   const [password, setPassword] = useState("");
 
   async function handleSignup(e) {
-  e.preventDefault();
+    e.preventDefault();
 
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-  });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
 
-  if (error) {
-    alert(error.message);
-    return;
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    navigate("/dashboard");
   }
-
-  navigate("/dashboard");
-}
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
       <div className="w-full max-w-xl">
         <div className="mb-10 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-950 text-4xl text-white">
-            ▱
+          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center">
+            <img
+              src={logo}
+              alt="Recall Logo"
+              className="h-20 w-20 object-contain"
+            />
           </div>
 
           <h1 className="text-4xl font-semibold text-slate-950">Recall</h1>
