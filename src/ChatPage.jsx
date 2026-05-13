@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { authFetch } from "./lib/authFetch";
+import logo from "./assets/logo.png";
 
 function ChatPage() {
   const API_URL = import.meta.env.VITE_API_URL;
-  
+
+  const { meetingId } = useParams();
+
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,16 +26,24 @@ function ChatPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+
     setInput("");
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/chat`, {
+
+      const endpoint = meetingId
+        ? `${API_URL}/chat/${meetingId}`
+        : `${API_URL}/chat`;
+
+      const response = await authFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question: trimmedMessage }),
+        body: JSON.stringify({
+          question: trimmedMessage,
+        }),
       });
 
       const data = await response.json();
@@ -40,24 +52,23 @@ function ChatPage() {
         throw new Error(data.detail || "Failed to get answer.");
       }
 
-      const botMessage = {
-        id: data.interactionId || crypto.randomUUID(),
-        sender: "bot",
-        text: data.answer,
-        feedback: null,
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: data.interactionId || crypto.randomUUID(),
+          sender: "bot",
+          text: data.answer,
+          feedback: null,
+          interactionId: data.interactionId,
+          question: data.question,
+          retrievedChunks: data.retrievedChunks || [],
+          llmCalled: data.llmCalled,
+          timestamp: data.timestamp,
+        },
+      ]);
 
-        // for feedback/evaluation
-        interactionId: data.interactionId,
-        documentId: data.documentId,
-        documentName: data.documentName,
-        question: data.question,
-        retrievedChunks: data.retrievedChunks || [],
-        llmCalled: data.llmCalled,
-        timestamp: data.timestamp,
-      };
-
-      setMessages((prev) => [...prev, botMessage]);
     } catch (err) {
+
       setMessages((prev) => [
         ...prev,
         {
@@ -67,6 +78,7 @@ function ChatPage() {
           feedback: null,
         },
       ]);
+
     } finally {
       setLoading(false);
     }
@@ -79,25 +91,29 @@ function ChatPage() {
   }
 
   async function handleFeedback(messageId, value) {
-    const target = messages.find((message) => message.id === messageId);
+    const target = messages.find(
+      (message) => message.id === messageId
+    );
+
     if (!target || target.sender !== "bot") return;
 
     setMessages((prev) =>
       prev.map((message) =>
-        message.id === messageId ? { ...message, feedback: value } : message,
-      ),
+        message.id === messageId
+          ? { ...message, feedback: value }
+          : message
+      )
     );
 
     try {
-      const response = await fetch(`${API_URL}/feedback`, {
+
+      await authFetch(`${API_URL}/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           interactionId: target.interactionId,
-          documentId: target.documentId,
-          documentName: target.documentName,
           question: target.question,
           answer: target.text,
           feedback: value,
@@ -107,115 +123,198 @@ function ChatPage() {
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Failed to save feedback.");
-      }
     } catch (err) {
       console.error("Failed to save feedback:", err);
     }
   }
 
   return (
-    <div className="flex h-full flex-col bg-slate-50">
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-100 text-2xl text-violet-600">
-              ✦
-            </div>
+    <div className="flex min-h-[calc(100vh-90px)] flex-col bg-stone-50">
 
-            <h2 className="mb-2 text-xl font-semibold text-gray-900">
-              Ready to Answer Your Questions
-            </h2>
+      {/* Top Section */}
 
-            <p className="max-w-md text-sm leading-6 text-gray-500">
-              Ask me anything about your document. I'll retrieve relevant
-              context and provide you with accurate answers.
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
+
+          <div>
+
+            <h1 className="text-2xl font-semibold text-slate-950">
+              {meetingId
+                ? "Meeting Chat"
+                : "AI Workspace"}
+            </h1>
+
+            <p className="mt-1 text-sm text-gray-500">
+              {meetingId
+                ? "Ask questions about this specific meeting"
+                : "Search across all your uploaded meetings"}
             </p>
-          </div>
-        ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`max-w-[80%] ${
-                  message.sender === "user" ? "ml-auto" : "mr-auto"
-                }`}
-              >
-                <div
-                  className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                    message.sender === "user"
-                      ? "bg-violet-500 text-white"
-                      : "bg-white text-gray-800 border border-gray-200"
-                  }`}
-                >
-                  {message.text}
-                </div>
 
-                {message.sender === "bot" && (
-                  <div className="mt-2 flex items-center gap-2 pl-2">
-                    <button
-                      onClick={() => handleFeedback(message.id, "up")}
-                      className={`rounded-full px-3 py-1 text-sm transition ${
-                        message.feedback === "up"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-white text-gray-500 hover:bg-gray-100"
-                      }`}
-                      aria-label="Thumbs up"
-                      title="Thumbs up"
-                    >
-                      👍
-                    </button>
-
-                    <button
-                      onClick={() => handleFeedback(message.id, "down")}
-                      className={`rounded-full px-3 py-1 text-sm transition ${
-                        message.feedback === "down"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-white text-gray-500 hover:bg-gray-100"
-                      }`}
-                      aria-label="Thumbs down"
-                      title="Thumbs down"
-                    >
-                      👎
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
-        )}
+
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-gray-50"
+          >
+            Dashboard
+          </button>
+
+        </div>
       </div>
 
-      <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3">
-        <div className="mx-auto flex w-full max-w-3xl gap-3">
+      {/* Chat Area */}
+
+      <div className="flex-1 overflow-y-auto px-6 py-8">
+
+        {messages.length === 0 ? (
+
+          <div className="mx-auto flex min-h-[60vh] max-w-4xl flex-col items-center justify-center text-center">
+
+            <div className="mb-6 flex items-center justify-center">
+              <img
+                src={logo}
+                alt="Recall"
+                className="h-14 w-14 object-contain"
+              />
+            </div>
+
+            <div className="mb-5">
+
+              {meetingId ? (
+                <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
+                  Meeting-specific workspace
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white">
+                  AI Workspace • All meetings
+                </span>
+              )}
+
+            </div>
+
+            <h2 className="mb-3 text-4xl font-semibold tracking-tight text-slate-950">
+              Ask Recall
+            </h2>
+
+            <p className="max-w-2xl text-base leading-7 text-gray-500">
+              Search transcripts, find decisions, summarize meetings,
+              identify action items, and retrieve important discussions instantly.
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 pb-8">
+
+            {messages.map((message) => (
+
+              <div
+                key={message.id}
+                className={`flex ${message.sender === "user"
+                  ? "justify-end"
+                  : "justify-start"
+                  }`}
+              >
+
+                <div className="max-w-[80%]">
+
+                  <div
+                    className={`rounded-3xl px-5 py-4 text-sm leading-7 shadow-sm ${message.sender === "user"
+                      ? "bg-slate-950 text-white"
+                      : "border border-gray-200 bg-white text-slate-800"
+                      }`}
+                  >
+                    {message.text}
+                  </div>
+
+                  {message.sender === "bot" && (
+
+                    <div className="mt-3 flex items-center gap-2 pl-2">
+
+                      <button
+                        onClick={() =>
+                          handleFeedback(message.id, "up")
+                        }
+                        className={`rounded-full border px-3 py-1 text-sm transition ${message.feedback === "up"
+                          ? "border-green-200 bg-green-50 text-green-700"
+                          : "border-gray-200 bg-white text-gray-500 hover:bg-gray-100"
+                          }`}
+                      >
+                        👍
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          handleFeedback(message.id, "down")
+                        }
+                        className={`rounded-full border px-3 py-1 text-sm transition ${message.feedback === "down"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-gray-200 bg-white text-gray-500 hover:bg-gray-100"
+                          }`}
+                      >
+                        👎
+                      </button>
+
+                    </div>
+
+                  )}
+
+                </div>
+
+              </div>
+
+            ))}
+
+            {loading && (
+
+              <div className="flex justify-start">
+
+                <div className="rounded-3xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-500 shadow-sm">
+                  Recall is thinking...
+                </div>
+
+              </div>
+
+            )}
+
+          </div>
+
+        )}
+
+      </div>
+
+      {/* Input */}
+
+      <div className="sticky bottom-0 border-t border-gray-200 bg-white px-6 py-5">
+
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-4">
+
           <input
             type="text"
-            placeholder="Ask a question..."
+            placeholder={
+              meetingId
+                ? "Ask about this meeting..."
+                : "Ask about all your meetings..."
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 max-w-xl mx-auto rounded-full border border-gray-300 px-4 py-2 text-sm outline-none items-center focus:border-violet-500"
+            className="flex-1 rounded-2xl border border-gray-300 bg-white px-5 py-4 text-sm text-slate-800 outline-none transition focus:border-slate-950"
           />
 
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
-            className="rounded-full bg-violet-500 px-4 py-2 text-sm text-white transition hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!input.trim() || loading}
+            className="rounded-2xl bg-slate-950 px-6 py-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-400"
           >
-            {loading ? "Sending..." : "Send ➤"}
+            {loading ? "Thinking..." : "Send"}
           </button>
 
-          <button
-            onClick={() => navigate("/")}
-            className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
-          >
-            Upload new document
-          </button>
         </div>
+
       </div>
+
     </div>
   );
 }
