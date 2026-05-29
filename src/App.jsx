@@ -6,15 +6,17 @@ import UploadPage from "./UploadPage";
 import ChatPage from "./ChatPage";
 import EvaluationPage from "./EvaluationPage";
 import AppLayout from "./AppLayout";
+import LandingPage from "./LandingPage";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/" element={<Navigate to="/LandingPage" />} />
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/LandingPage" element={<LandingPage />} />
 
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
