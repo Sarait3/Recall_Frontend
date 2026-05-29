@@ -7,6 +7,26 @@ function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const DEMO_EMAIL = import.meta.env.VITE_DEMO_EMAIL;
+  const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD;
+
+
+  async function handleDemoLogin() {
+    console.log("Demo email:", DEMO_EMAIL);
+    console.log("Demo password:", DEMO_PASSWORD);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: DEMO_EMAIL,
+      password: DEMO_PASSWORD,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    navigate("/dashboard");
+  }
+
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -63,6 +83,14 @@ function LoginPage() {
 
           <button className="w-full rounded-full bg-slate-950 py-4 font-medium text-white">
             Log in
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            className="mt-3 w-full rounded-full border border-slate-950 py-4 font-medium text-slate-950 hover:bg-slate-100"
+          >
+            Try Demo
           </button>
 
           <p className="mt-6 text-sm text-gray-500">
